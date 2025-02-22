@@ -1,0 +1,9 @@
+[package]
+name = "admin_rust"
+version = "0.1.0"
+authors = ["<Qiqianily> <Joedian@163.com>"]
+license = "MIT"
+edition = "2024"
+resolver = "2"
+
+[dependencies]
