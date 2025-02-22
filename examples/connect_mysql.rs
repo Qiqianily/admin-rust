@@ -1,69 +1,13 @@
+use admin_rust::state::AppState;
+use admin_rust::{mypool, utils};
 use axum::extract::{Path, State};
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
 use serde_json::json;
-use sqlx::mysql::MySqlPoolOptions;
-use sqlx::types::chrono;
-use sqlx::{MySql, Pool};
-use std::ops::Deref;
-use std::sync::Arc;
 use tracing::info;
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::fmt::format::Writer;
-use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::{Layer as _, fmt::Layer, layer::SubscriberExt, util::SubscriberInitExt};
-
-// Connect to the database and return a pool of connections with a maximum of 10 connections,
-// with a 30 seconds timeout for establishing connections.
-pub async fn connect_pool() -> Pool<MySql> {
-    MySqlPoolOptions::new()
-        .max_connections(10)
-        .connect("mysql://root:aa123123@localhost/yx_healthy")
-        .await
-        .unwrap()
-}
-#[allow(unused)]
-#[derive(Debug, Clone)]
-struct AppState {
-    inner: Arc<AppStateInner>,
-    pool: Pool<MySql>,
-}
-
-// AppStateInner is a struct that holds any application-specific state that needs to be shared
-// across multiple requests.
-impl AppState {
-    pub async fn new(pool: Pool<MySql>) -> Self {
-        Self {
-            inner: Arc::new(AppStateInner {}),
-            pool,
-        }
-    }
-}
-// Deref allows us to access the inner AppStateInner struct from the AppState struct.
-impl Deref for AppState {
-    type Target = AppStateInner;
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-#[allow(unused)]
-#[derive(Debug)]
-pub(crate) struct AppStateInner {}
-
-// Custom FormatTime implementation that formats timestamps
-// in the format of "2022-01-01T00:00:00.000"
-struct LocalTimer;
-const fn east8() -> Option<chrono::FixedOffset> {
-    chrono::FixedOffset::east_opt(8 * 3600)
-}
-impl FormatTime for LocalTimer {
-    fn format_time(&self, w: &mut Writer<'_>) -> std::fmt::Result {
-        let now = chrono::Utc::now().with_timezone(&east8().unwrap());
-        write!(w, "{}", now.format("%FT%T%.3f"))
-    }
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -75,12 +19,14 @@ async fn main() -> anyhow::Result<()> {
     } else {
         LevelFilter::INFO
     };
-    let layer = Layer::new().with_timer(LocalTimer).with_filter(level);
+    let layer = Layer::new()
+        .with_timer(utils::LocalTimer)
+        .with_filter(level);
     tracing_subscriber::registry().with(layer).init();
 
     // Connect to the database and create a pool of connections.
-    let pool = connect_pool().await;
-    let app_state = AppState::new(pool).await;
+    let pool = mypool::connect_pool().await;
+    let app_state = AppState::new(pool);
     // Use the pool to execute queries.
     let app_router = Router::new()
         .route("/api/get/user/{id}", get(get_user_handler))
